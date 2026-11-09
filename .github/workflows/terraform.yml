@@ -55,6 +55,8 @@ jobs:
     name: 'Terraform'
     runs-on: ubuntu-latest
     environment: production
+    env:
+      FLOCI_CONTAINER: floci-ci-${{ github.run_id }}-${{ github.run_attempt }}
 
     # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
     defaults:
@@ -71,6 +73,27 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       with:
         cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+    # Start an isolated emulator; its anonymous data volume is removed at cleanup.
+    - name: Start Floci-AZ
+      run: |
+        docker run -d --name "$FLOCI_CONTAINER" \
+          -p 127.0.0.1:4577:4577 \
+          -e FLOCI_AZ_TLS_ENABLED=true \
+          -e FLOCI_AZ_SERVICES_FUNCTIONS_ENABLED=false \
+          docker.io/floci/floci-az@sha256:0930cc3fe09014c40f266e261b93b0bd0ec99daa83b08d3b1ec0203caeb8e390
+
+    - name: Wait for Floci-AZ
+      run: |
+        for attempt in $(seq 1 60); do
+          if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4577/_floci/health >/dev/null; then
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Floci-AZ did not become healthy in time." >&2
+        docker logs "$FLOCI_CONTAINER" || true
+        exit 1
 
     # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
     - name: Terraform Init
@@ -93,6 +116,13 @@ jobs:
 
     - name: Terraform Validate
       run: terraform validate
+
+    - name: Remove Floci-AZ and its data
+      if: always()
+      run: |
+        if docker container inspect "$FLOCI_CONTAINER" >/dev/null 2>&1; then
+          docker rm -fv "$FLOCI_CONTAINER"
+        fi
       # On push to "main", build or change infrastructure according to Terraform configuration files
       # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
     #- name: Terraform Apply
