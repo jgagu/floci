@@ -3,7 +3,7 @@ set -eu
 
 export DEBIAN_FRONTEND=noninteractive
 
-ARM_ENDPOINT="https://host.containers.internal:4577"
+ARM_ENDPOINT="${ARM_ENDPOINT:-https://host.containers.internal:4577}"
 ARM_API_VERSION="2023-09-01"
 subscription_id="${1:?Falta la suscripción}"
 resource_group="${2:?Falta el grupo de recursos}"

@@ -77,9 +77,15 @@ resource "azurerm_linux_virtual_machine" "vm" {
 # Floci-AZ no permite publicar puertos de una VM ya creada; un puente Socat
 # local reenvía localhost:8080 al puerto 80 que Nginx escucha dentro de vmone.
 resource "terraform_data" "html_status_server" {
+  input = {
+    ci_linux = var.floci_ci_linux
+  }
+
   triggers_replace = [
+    var.floci_ci_linux,
     filesha256("${path.module}/html-prueba.html"),
     filesha256("${path.module}/scripts/deploy-vm-web.ps1"),
+    filesha256("${path.module}/scripts/deploy-vm-web-ci.sh"),
     filesha256("${path.module}/scripts/configure-vm-web.sh"),
   ]
 
@@ -88,12 +94,16 @@ resource "terraform_data" "html_status_server" {
   }
 
   provisioner "local-exec" {
-    command = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '${path.module}/scripts/deploy-vm-web.ps1' -HtmlPath '${path.module}/html-prueba.html' -VmName '${azurerm_linux_virtual_machine.vm.name}' -ResourceGroup '${azurerm_resource_group.floci.name}'\""
+    command = var.floci_ci_linux ? "bash '${path.module}/scripts/deploy-vm-web-ci.sh' start" : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '${path.module}/scripts/deploy-vm-web.ps1' -HtmlPath '${path.module}/html-prueba.html' -VmName '${azurerm_linux_virtual_machine.vm.name}' -ResourceGroup '${azurerm_resource_group.floci.name}'\""
+    environment = {
+      FLOCI_VM_NAME        = azurerm_linux_virtual_machine.vm.name
+      FLOCI_RESOURCE_GROUP = azurerm_resource_group.floci.name
+    }
   }
 
   provisioner "local-exec" {
     when    = destroy
-    command = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '${path.module}/scripts/deploy-vm-web.ps1' -HtmlPath '${path.module}/html-prueba.html' -Destroy\""
+    command = try(self.input.ci_linux, false) ? "bash '${path.module}/scripts/deploy-vm-web-ci.sh' stop" : "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '${path.module}/scripts/deploy-vm-web.ps1' -HtmlPath '${path.module}/html-prueba.html' -Destroy\""
   }
 }
 

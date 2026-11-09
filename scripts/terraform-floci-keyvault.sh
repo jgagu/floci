@@ -43,6 +43,8 @@ fi
 python scripts/floci_keyvault_tls_proxy.py \
   --vault keyvault \
   --port "${PROXY_PORT}" \
+  --cert "${FLOCI_KEYVAULT_TLS_CERT:-data/tls/floci-az-selfsigned.crt}" \
+  --key "${FLOCI_KEYVAULT_TLS_KEY:-data/tls/floci-az-selfsigned.key}" \
   >"${PROXY_LOG}" 2>&1 &
 
 proxy_pid=$!

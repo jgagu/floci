@@ -81,6 +81,12 @@ variable "storage_account_name" {
   }
 }
 
+variable "floci_ci_linux" {
+  description = "Usa Docker en Linux para desplegar la web en CI en lugar del script de Windows."
+  type        = bool
+  default     = false
+}
+
 variable "floci_metadata_host" {
   description = "Host y puerto del endpoint de metadatos de Floci-AZ."
   type        = string
