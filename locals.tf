@@ -5,6 +5,6 @@ locals {
   }
   account_tier = {
     standard = "Standard",
-    default = "Standard"
+    default  = "Standard"
   }
 }
