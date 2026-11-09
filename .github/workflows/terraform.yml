@@ -80,7 +80,18 @@ jobs:
     - name: Terraform Format
       run: terraform fmt -check
 
-    - name: Terraform Apply
+    # Generate an ephemeral key pair for the VM configuration.
+    - name: Generate SSH key
+      run: |
+        umask 077
+        mkdir -p keys
+        if [ -e keys/id_ed25519 ] || [ -e keys/id_ed25519.pub ]; then
+          echo "SSH key already exists; refusing to overwrite it." >&2
+          exit 1
+        fi
+        ssh-keygen -q -t ed25519 -N "" -f keys/id_ed25519
+
+    - name: Terraform Validate
       run: terraform validate
       # On push to "main", build or change infrastructure according to Terraform configuration files
       # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
