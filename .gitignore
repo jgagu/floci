@@ -1,0 +1,46 @@
+# Credenciales y configuración local
+.env
+.env.*
+!.env.example
+.azure/
+.aws/
+.podman-auth.json
+.docker/config.json
+.terraformrc
+terraform.rc
+credentials.tfrc.json
+
+# Datos y claves locales de Floci
+/data/
+/keys/
+/floci-az.crt
+
+# Claves privadas y almacenes de certificados
+*.key
+*.pem
+*.pkcs8
+*.p12
+*.pfx
+
+# Estado y artefactos locales de Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+
+# Planes binarios de Terraform
+*.tfplan
+tfplan
+
+# Archivos temporales de Python
+__pycache__/
+*.py[cod]
+
+# graphify-axet
+.graphify/
+.graphi*
