@@ -26,6 +26,16 @@ output "subnets" {
   value       = module.network.subnets
 }
 
+output "secondary_virtual_network" {
+  description = "Identificador, nombre y rangos de la segunda red virtual."
+  value       = module.secondary_network.virtual_network
+}
+
+output "secondary_subnets" {
+  description = "Subredes de la segunda red virtual."
+  value       = module.secondary_network.subnets
+}
+
 output "storage_account" {
   description = "Identificador y nombre de la cuenta de almacenamiento, sin claves."
   value = {

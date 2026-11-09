@@ -13,6 +13,16 @@ module "network" {
   subnets             = var.subnets
 }
 
+module "secondary_network" {
+  source = "./modules/network"
+
+  name                = var.secondary_virtual_network_name
+  address_space       = var.secondary_virtual_network_address_space
+  location            = azurerm_resource_group.floci.location
+  resource_group_name = azurerm_resource_group.floci.name
+  subnets             = var.secondary_subnets
+}
+
 moved {
   from = azurerm_virtual_network.public_red
   to   = module.network.azurerm_virtual_network.this

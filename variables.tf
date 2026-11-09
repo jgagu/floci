@@ -43,6 +43,34 @@ variable "subnets" {
   }
 }
 
+variable "secondary_virtual_network_name" {
+  description = "Nombre de la segunda red virtual, independiente de la red principal."
+  type        = string
+  default     = "vnet-secondary"
+}
+
+variable "secondary_virtual_network_address_space" {
+  description = "Rangos CIDR de la segunda red virtual; no deben solaparse con los de la red principal."
+  type        = list(string)
+  default     = ["10.1.0.0/16"]
+}
+
+variable "secondary_subnets" {
+  description = "Subredes de la segunda red virtual."
+  type = map(object({
+    name             = string
+    address_prefixes = list(string)
+    delegate_to_aci  = bool
+  }))
+  default = {
+    secondary = {
+      name             = "secondary"
+      address_prefixes = ["10.1.1.0/24"]
+      delegate_to_aci  = false
+    }
+  }
+}
+
 variable "storage_account_name" {
   description = "Nombre de la cuenta de almacenamiento: entre 3 y 24 caracteres, solo letras minúsculas y números."
   type        = string
