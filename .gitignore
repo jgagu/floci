@@ -28,7 +28,6 @@ credentials.tfrc.json
 *.tfstate.*
 crash.log
 crash.*.log
-*.tfvars
 *.tfvars.json
 !*.tfvars.example
 !*.tfvars.json.example
