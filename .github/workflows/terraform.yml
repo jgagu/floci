@@ -1,7 +1,5 @@
-# This workflow installs the latest version of Terraform CLI and configures the Terraform CLI configuration file
-# with an API token for Terraform Cloud (app.terraform.io). On pull request events, this workflow will run
-# `terraform init`, `terraform fmt`, and `terraform plan` (speculative plan via Terraform Cloud). On push events
-# to the "main" branch, `terraform apply` will be executed.
+# On pull requests, check formatting, initialize and validate Terraform, and run a plan against Floci-AZ.
+# On push events to the "main" branch, also apply the configuration.
 #
 # Documentation for `hashicorp/setup-terraform` is located here: https://github.com/hashicorp/setup-terraform
 #
@@ -46,7 +44,8 @@ name: 'Terraform'
 
 on:
   push:
-
+  pull_request:
+    
 permissions:
   contents: read
 
@@ -129,13 +128,17 @@ jobs:
         echo "FLOCI_KEYVAULT_TLS_CERT=$RUNNER_TEMP/floci-ca/server.crt" >> "$GITHUB_ENV"
         echo "FLOCI_KEYVAULT_TLS_KEY=$RUNNER_TEMP/floci-ca/server.key" >> "$GITHUB_ENV"
 
-    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
-    - name: Terraform Init
+    # Main initializes first; pull requests retain their fmt-before-init sequence.
+    - name: Terraform Init (main)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: terraform init
 
-    # Checks that all Terraform configuration files adhere to a canonical format
     - name: Terraform Format
       run: terraform fmt -check
+
+    - name: Terraform Init
+      if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+      run: terraform init
 
     # Generate an ephemeral key pair for the VM configuration.
     - name: Generate SSH key
@@ -152,13 +155,13 @@ jobs:
       run: terraform validate
     
     - name: Terraform Plan
-      run: bash scripts/terraform-floci-keyvault.sh plan -input=false
+      run: bash scripts/terraform-floci-keyvault.sh plan -input=false -out="$RUNNER_TEMP/floci.tfplan"
 
       # On push to "main", build or change infrastructure according to Terraform configuration files
       # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
     - name: Terraform Apply
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: bash scripts/terraform-floci-keyvault.sh apply -auto-approve -input=false
+      run: bash scripts/terraform-floci-keyvault.sh apply -input=false "$RUNNER_TEMP/floci.tfplan"
 
     # Test the deployed web page with a real headless browser.
     - name: Check deployed web page in browser
@@ -204,12 +207,28 @@ jobs:
         fi
         echo "La página y el estado de vmone se cargaron correctamente en el navegador."
 
-    - name: Remove Floci-AZ and its data
+    # Reset the isolated runner, including VM containers created by Floci through the Docker socket.
+    - name: Reset Floci-AZ and its data
       if: always()
       run: |
+        status=0
         if docker container inspect "${FLOCI_CONTAINER}-web" >/dev/null 2>&1; then
-          docker rm -f "${FLOCI_CONTAINER}-web"
+          docker rm -fv "${FLOCI_CONTAINER}-web" || status=1
         fi
+
+        if [ -n "${TF_VAR_subscription_id:-}" ]; then
+          vm_ids="$(docker ps -aq \
+            --filter 'label=io.floci.service=vm' \
+            --filter 'label=io.floci.resource-id=vmone' \
+            --filter "label=io.floci.subscription=$TF_VAR_subscription_id")" || status=1
+          if [ -n "$vm_ids" ]; then
+            while IFS= read -r vm_id; do
+              docker rm -fv "$vm_id" || status=1
+            done <<< "$vm_ids"
+          fi
+        fi
+
         if docker container inspect "$FLOCI_CONTAINER" >/dev/null 2>&1; then
-          docker rm -fv "$FLOCI_CONTAINER"
+          docker rm -fv "$FLOCI_CONTAINER" || status=1
         fi
+        exit "$status"
