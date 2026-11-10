@@ -1,0 +1,86 @@
+name: Energy API - Terraform PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, test]
+    env:
+      FLOCI_CONTAINER: energy-floci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.environment }}
+      TF_INPUT: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Start Floci-AZ
+        run: |
+          docker run -d --name "$FLOCI_CONTAINER" \
+            -p 127.0.0.1:4577:4577 \
+            -e FLOCI_AZ_TLS_ENABLED=true \
+            -e FLOCI_AZ_SERVICES_FUNCTIONS_ENABLED=false \
+            -e FLOCI_AZ_SERVICES_VM_MOCKED=false \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            docker.io/floci/floci-az@sha256:0930cc3fe09014c40f266e261b93b0bd0ec99daa83b08d3b1ec0203caeb8e390
+
+      - name: Wait for Floci-AZ
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:4577/_floci/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Floci-AZ no responde." >&2
+          docker logs "$FLOCI_CONTAINER" || true
+          exit 1
+
+      - name: Configure Floci TLS and SSH key
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/energy-api"
+          docker cp "$FLOCI_CONTAINER:/app/data/tls/floci-az-selfsigned-ca.crt" "$RUNNER_TEMP/energy-api/ca.crt"
+          docker cp "$FLOCI_CONTAINER:/app/data/tls/floci-az-selfsigned.crt" "$RUNNER_TEMP/energy-api/server.crt"
+          docker cp "$FLOCI_CONTAINER:/app/data/tls/floci-az-selfsigned.key" "$RUNNER_TEMP/energy-api/server.key"
+          cat /etc/ssl/certs/ca-certificates.crt "$RUNNER_TEMP/energy-api/ca.crt" > "$RUNNER_TEMP/energy-api/ca-bundle.crt"
+          curl --fail --silent --show-error --max-time 10 \
+            --cacert "$RUNNER_TEMP/energy-api/ca-bundle.crt" \
+            'https://127.0.0.1:4577/metadata/endpoints?api-version=2022-09-01' >/dev/null
+          ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/energy-api/id_ed25519"
+          echo "SSL_CERT_FILE=$RUNNER_TEMP/energy-api/ca-bundle.crt" >> "$GITHUB_ENV"
+          echo "FLOCI_KEYVAULT_TLS_CERT=$RUNNER_TEMP/energy-api/server.crt" >> "$GITHUB_ENV"
+          echo "FLOCI_KEYVAULT_TLS_KEY=$RUNNER_TEMP/energy-api/server.key" >> "$GITHUB_ENV"
+          echo "TF_VAR_ssh_public_key=$(cat "$RUNNER_TEMP/energy-api/id_ed25519.pub")" >> "$GITHUB_ENV"
+
+      - name: Terraform fmt
+        run: terraform -chdir=energy-api fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform -chdir=energy-api init -input=false
+
+      - name: Terraform validate
+        run: terraform -chdir=energy-api validate
+
+      - name: Terraform plan
+        run: bash energy-api/scripts/terraform-floci.sh "${{ matrix.environment }}" plan -input=false -var-file="environments/${{ matrix.environment }}.tfvars"
+
+      - name: Reset Floci-AZ
+        if: always()
+        run: |
+          if docker container inspect "$FLOCI_CONTAINER" >/dev/null 2>&1; then
+            docker rm -fv "$FLOCI_CONTAINER"
+          fi
