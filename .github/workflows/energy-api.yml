@@ -2,12 +2,16 @@ name: Energy API - Terraform PR
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
+  push:
+    branches: ["main", "feature/energy-api"]
 
 permissions:
   contents: read
 
 jobs:
   terraform:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
     name: Terraform (${{ matrix.environment }})
     runs-on: ubuntu-latest
     strategy:
@@ -21,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merged && github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -77,6 +83,11 @@ jobs:
 
       - name: Terraform plan
         run: bash energy-api/scripts/terraform-floci.sh "${{ matrix.environment }}" plan -input=false -var-file="environments/${{ matrix.environment }}.tfvars"
+
+
+      - name: Terraform apply
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+        run: bash energy-api/scripts/terraform-floci.sh "${{ matrix.environment }}" apply -input=false -auto-approve -var-file="environments/${{ matrix.environment }}.tfvars"
 
       - name: Reset Floci-AZ
         if: always()
